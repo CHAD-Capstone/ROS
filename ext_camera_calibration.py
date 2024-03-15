@@ -44,33 +44,33 @@ distortion_coeffs = cam_params["dist"].T
 # asser
 # print(f"{cam_params},\n\n{cam_intrinsics.shape},\n\n{distortion_coeffs.shape}")
 
-# def get_T_glob_loc_vicon(debug = False):
-#     """
-#     NOTE: NO LONGER USED
-#     Relevant quaternion to R:
-#     scipy.spatial.transform.Rotation.as_quat
-#     scipy.spatial.transform.Rotation.from_quat
-#     """
-#     if debug: # sets T to a small random rotation and 0 translation
-#         # sample small euler angles to generate a small perturbed rotation matrix
-#         rpy = np.random.normal(0, 0.5, size=(3,1))
-#         R = dcm_from_rpy(rpy)
-#         # t = (np.array([[0,0,2]]).T + np.random.normal(loc=0, scale=0.5, size=(3,1))).flatten()
+def transform_stamped_to_pq(msg):
+    """Convert a C{geometry_msgs/TransformStamped} into position/quaternion np arrays
 
-#         # print(R, t)
-#         T = np.zeros((4,4))
-#         T[0:3,0:3] = R
-#         # T[0:3,3] = t
-#         T[3,3] = 1
-#         # T = np.eye(4)
-#     return T # change later
+    @param msg: ROS message to be converted
+    @return:
+      - p: position as a np.array
+      - q: quaternion as a numpy array (order = [x,y,z,w])
+    """
+    return transform_to_pq(msg.transform)
 
-# print(get_T_glob_loc_vicon(debug=True))
+def transform_to_pq(msg):
+    """Convert a C{geometry_msgs/Transform} into position/quaternion np arrays
 
-def get_T_C_global_vicon(april_tag_img_file: Path, detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_1_Ai = None):
+    @param msg: ROS message to be converted
+    @return:
+      - p: position as a np.array
+      - q: quaternion as a numpy array (order = [x,y,z,w])
+    """
+    p = np.array([msg.translation.x, msg.translation.y, msg.translation.z])
+    q = np.array([msg.rotation.x, msg.rotation.y,
+                  msg.rotation.z, msg.rotation.w])
+    return p, q
+
+def get_T_C_global_vicon(april_tag_img: np.ndarray, detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_1_Ai = None):
     """
     Estimates the pose of the camera relative to the global vicon frame.
-    april_tag_img_files: list of april tag image paths.
+    april_tag_img: single april tag image.
     detector: april tag detector object.
     cam_intrinsics: 3x3 numpy array of the camera intrinsics matrix
     distortion_coeffs: 5x1 camera distortion coefficients.
@@ -80,11 +80,11 @@ def get_T_C_global_vicon(april_tag_img_file: Path, detector: Detector, cam_intri
     """
 
     # from pose_estimation import estimate_camera_pose
-    image = cv2.imread(april_tag_img_file)#.absolute().as_posix())
-    print(image.shape)  
+    # image = cv2.imread(april_tag_img_file)#.absolute().as_posix())
+    print(april_tag_img.shape)  
 
     # Needs to be in grayscale for the apriltag detector
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(april_tag_img, cv2.COLOR_BGR2GRAY)
 
     # Detect AprilTags in the image
     tags = detector.detect(gray) 
@@ -110,11 +110,11 @@ def get_T_C_global_vicon(april_tag_img_file: Path, detector: Detector, cam_intri
         
     return T_1_C # results seems reasonable
 
-def get_T_local_vicon_C(april_tag_img_files, T_world_loc_vicon,  detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_1_Ai = None):
+def get_T_Marker_C(april_tag_imgs, TS_world_marker,  detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_1_Ai = None):
     """
-    Estimates the pose of the camera relative to the local vicon frame.
+    Estimates the pose of the camera relative to the marker frame.
     april_tag_img_files: list of april tag image paths.
-    T_world_loc_vicon: list of world to local vicon transformation matrices corresponding to the time of the april tag img files.
+    TS_world_marker: list of world to local vicon transformations stored as TransformStamped corresponding to the time of the april tag img files.
     detector: april tag detector object.
     cam_intrinsics: 3x3 numpy array of the camera intrinsics matrix
     distortion_coeffs: 5x1 camera distortion coefficients.
@@ -122,20 +122,22 @@ def get_T_local_vicon_C(april_tag_img_files, T_world_loc_vicon,  detector: Detec
     Returns:
     T_1_C: 4x4 numpy array of the transformation from the camera frame to the base frame.
     """
-    num_imgs = len(april_tag_img_files) # assumes 1 tag per image
+    num_imgs = len(april_tag_imgs) # assumes 1 tag per image
     quats = np.empty((num_imgs, 4)) # for averaging over transforms
     translations = np.empty((num_imgs, 3))
-    for i, (april_tag_img_file, T_world_loc_vicon_i) in enumerate(zip(april_tag_img_files, T_world_loc_vicon)):
-        print(type(april_tag_img_file), april_tag_img_file, april_tag_img_files)
-        T_C_world_i = get_T_C_global_vicon(april_tag_img_file, detector, cam_intrinsics, distortion_coeffs, T_1_Ai = None)
+    for i, (april_tag_img, TS_world_marker_i) in enumerate(zip(april_tag_imgs, TS_world_marker)):
+        print(type(april_tag_img), april_tag_img, april_tag_imgs)
+        T_world_marker_i = transform_stamped_to_T(TS_world_marker_i) # convert TransformStamped to Transformation matrix
+        
+        T_C_world_i = get_T_C_global_vicon(april_tag_img, detector, cam_intrinsics, distortion_coeffs, T_1_Ai = None)
         # T_world_loc_vicon_i = get_T_glob_loc_vicon(debug=True)
 
-        T_C_local_vicon_i = T_C_world_i @ T_world_loc_vicon_i # compute T_C_loc estimate for i-th image
-        print(T_C_world_i, T_world_loc_vicon_i)
+        T_C_local_vicon_i = T_C_world_i @ T_world_marker_i # compute T_C_loc estimate for i-th image
+        print(T_C_world_i, T_world_marker_i)
         R = Rotation.from_matrix(T_C_local_vicon_i[0:3, 0:3]) # scipy.spatial.transform.Rotation type
         t = T_C_local_vicon_i[0:3,3]
 
-        quat = R.as_quat() # get quat rep of R, # NOTE dont know what the return type is
+        quat = R.as_quat() # get quat rep of R, # NOTE dont know what the return type is, nvm should be fine now tho still keep assert in
         assert type(quat) == np.ndarray, f"got {type(quat)}"
         quats[i,:] = quat
         translations[i,:] = t
@@ -152,35 +154,6 @@ def get_T_local_vicon_C(april_tag_img_files, T_world_loc_vicon,  detector: Detec
     T[3,3] = 1
     T_loc_vicon_C = np.inv(T) 
     return T_loc_vicon_C
-
-class ViconSubscriber:
-    # NOTE: Dont think this class will be used
-    def __init__(self):
-        # Initialize the node
-        rospy.init_node('vicon_subscriber', anonymous=True)
-        
-        # Member to store the current transform
-        self.current_vicon_transform = None
-        self.last_vicon_update_time = rospy.get_time()
-        
-        # Subscribe to the Vicon topic
-        self.vicon_sub = rospy.Subscriber('/vicon/ROB498_Drone/ROB498_Drone', TransformStamped, self.vicon_cb)
-        
-    def vicon_cb(self, msg):
-        """Callback function to process data received from the Vicon system."""
-        self.current_vicon_transform = msg
-        self.last_vicon_update_time = rospy.get_time()
-        rospy.loginfo("Vicon Transform Updated")
-
-    def run(self):
-        # Keep the node running
-        rospy.spin()
-
-    
-# No clue what this does, from ChatGPT
-class ExtCalNode():
-    def __init__(self):
-        self.vicon_sub = rospy.Subscriber('/vicon/ROB498_Drone/ROB498_Drone', TransformStamped, callback=self.vicon_cb)
 
 def transform_to_pq(msg):
     """Convert a C{geometry_msgs/Transform} into position/quaternion np arrays
@@ -204,6 +177,22 @@ def transform_stamped_to_pq(msg):
       - q: quaternion as a numpy array (order = [x,y,z,w])
     """
     return transform_to_pq(msg.transform)
+
+def transform_stamped_to_T(msg):
+    """Convert a C{geometry_msgs/TransformStamped} into position/quaternion np arrays
+
+    @param msg: ROS message to be converted
+    @return:
+      - T: 4x4 Transformation matrix as a np.array
+    """
+    p,q =  transform_to_pq(msg.transform)
+    R = Rotation.from_quat(q).as_matrix()
+    T = np.zeros((4,4))
+    T[0:3,0:3] = R
+    T[0:3,  3] = p
+    T[  3,  3] = 1
+
+    return T
 
 if __name__ == '__main__':
     vicon_subscriber = ViconSubscriber()
