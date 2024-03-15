@@ -47,7 +47,8 @@ import rospy
 from geometry_msgs.msg import PoseStamped, TransformStamped, Point, Quaternion
 from nav_msgs.msg import Odometry
 import threading
-import tf.transformations as tf_trans
+from scipy.spatial.transform import Rotation
+import numpy as np
 
 dx = 0.0  # Given in VICON frame. Vector from VICON to local frame
 dy = 0.0
@@ -55,8 +56,8 @@ dz = 0.0
 roll = 0.0  # From VICON to local frame
 pitch = 0.0
 yaw = 0.0
-
-trans_quaternion = tf_trans.quaternion_from_euler(roll, pitch, yaw)
+rpy = np.array([roll, pitch, yaw])
+trans_quaternion = Rotation.from_euler("xyz", rpy).as_quat() # no clue what the canonical form bool is supposed to be set at
 
 def transform_vicon_to_local(vicon_translation, vicon_quaternion):
     """
@@ -71,7 +72,11 @@ def transform_vicon_to_local(vicon_translation, vicon_quaternion):
 
     # Mulitply the quaternions
     vicon_quaternion = [vicon_quaternion.x, vicon_quaternion.y, vicon_quaternion.z, vicon_quaternion.w]
-    local_quaternion = tf_trans.quaternion_multiply(vicon_quaternion, trans_quaternion)
+    vicon_quat_obj = Rotation.from_quat(vicon_quaternion)
+    trans_quat_obj = Rotation.from_quat(trans_quaternion)
+
+    quat_prod = vicon_quat_obj * trans_quat_obj
+    local_quaternion = quat_prod.as_quat()
 
     pose = Odometry()
     pose.pose.pose.position = point
@@ -156,7 +161,8 @@ class ViconNode:
             print(msg)
             # Print out the translation and rotation
             print('VICON Translation: (x={}, y={}, z={})'.format(translation.x, translation.y, translation.z))
-            euler = tf_trans.euler_from_quaternion([rotation.x, rotation.y, rotation.z, rotation.w])
+            rot_quat = np.array([rotation.x, rotation.y, rotation.z, rotation.w])
+            euler = Rotation.from_quat(rot_quat).as_euler("xyz")           
             # print('VICON Rotation: (x={}, y={}, z={}, w={})'.format(rotation.x, rotation.y, rotation.z, rotation.w))
             print('VICON Rotation: (x={}, y={}, z={})'.format(euler[0], euler[1], euler[2]))
             print('VICON Stamp: {}'.format(stamp))
