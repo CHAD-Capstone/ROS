@@ -113,7 +113,7 @@ def get_T_C_global_vicon(april_tag_img: np.ndarray, detector: Detector, cam_intr
 def get_T_Marker_C(april_tag_imgs, TS_world_marker,  detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_1_Ai = None):
     """
     Estimates the pose of the camera relative to the marker frame.
-    april_tag_img_files: list of april tag image paths.
+    april_tag_imgs: list of april tag image paths.
     TS_world_marker: list of world to local vicon transformations stored as TransformStamped corresponding to the time of the april tag img files.
     detector: april tag detector object.
     cam_intrinsics: 3x3 numpy array of the camera intrinsics matrix

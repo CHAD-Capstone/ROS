@@ -16,16 +16,27 @@ Pose = np.ndarray  # 4x4 homogeneous transformation matrix
 
 
 
-
+def check_if_tags_present(image: np.ndarray, detector: Detector) -> bool:
+    """
+    Check if there is an april tag in an image. Note this might not be very efficient potentially since im calling the detector each time an image 
+    is passed tho idk if theres a specific function present in the Detector library that specifically does this.
+    image: np.ndarray
+    detector: April tag Detector object
+    Returns:
+    tags_present: bool, True if tags present in image, False if no tags detected
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BG2GRAY)
+    tags = detector.detect(gray)
+    tags_present = (len(tags) != 0)
+    return tags_present
 
 def get_T_Marker_Ais(april_tag_img: np.ndarray, detector: Detector, cam_intrinsics: np.ndarray, distortion_coeffs: np.ndarray, T_Marker_Camera: np.ndarray):
     """
-    Estimates the pose of the camera relative to the global vicon frame.
-    april_tag_img_files: list of april tag image paths.
+    Estimates the pose of the april tag relative to the marker frame.
+    april_tag_img: single np.ndarray image of april tags.
     detector: april tag detector object.
     cam_intrinsics: 3x3 numpy array of the camera intrinsics matrix
     distortion_coeffs: 5x1 camera distortion coefficients.
-    T_1_Ai: 4x4 numpy array of the transformation from the tag frame to the base frame. NOTE: CURRENTLY NOT USED AT ALL.
     Returns:
     T_C_A_dict: dict of T_C_A 4x4 numpy array of the transformation geting the April tag pose wrt camera pose, stored as: {tag_id0: [T_C_A1, ...], tag_id1: [T_C_A1, ...] ...}
     where each tag has atleast 1 and (probably) up to 2 Transformations due to noise. As of RIGHT NOW, only 1 transformation per tag_id but structure is still the same
