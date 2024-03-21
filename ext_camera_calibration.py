@@ -38,7 +38,7 @@ detector = Detector(
    decode_sharpening=0.25,
    debug=0
 )
-cam_params = np.load("./Extrinsic-Cam-Calibration/AprilTag-Bundle-Adjustment/cal.npz","r+")
+cam_params = np.load("./cal.npz","r+")
 cam_intrinsics = cam_params["mtx"]
 distortion_coeffs = cam_params["dist"].T
 # asser
